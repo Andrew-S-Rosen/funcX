@@ -1,3 +1,4 @@
+import concurrent.futures
 import logging
 import queue
 import threading
@@ -90,7 +91,7 @@ class GlobusComputeEngineBase(ABC):
         self.run_dir: t.Optional[str] = None
         # This attribute could be set by the subclasses in their
         # start method if another component insists on owning the queue.
-        self.results_passthrough: queue.Queue[dict[str, bytes | str | None]] = (
+        self.results_passthrough: queue.Queue[dict[str, t.Union[bytes, str, None]]] = (
             queue.Queue()
         )
 
@@ -218,7 +219,11 @@ class GlobusComputeEngineBase(ABC):
                 "packed_task": packed_task,
                 "exception_history": [],
             }
-        future = self._submit(execute_task, task_id, packed_task, self.endpoint_id)
+        try:
+            future = self._submit(execute_task, task_id, packed_task, self.endpoint_id)
+        except Exception as e:
+            future = concurrent.futures.Future()
+            future.set_exception(e)
         self._setup_future_done_callback(task_id, future)
         return future
 
