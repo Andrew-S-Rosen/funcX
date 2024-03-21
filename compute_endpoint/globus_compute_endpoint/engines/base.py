@@ -14,11 +14,12 @@ from globus_compute_common.messagepack.message_types import (
     TaskTransition,
 )
 from globus_compute_common.tasks import ActorName, TaskState
-from globus_compute_endpoint.engines.helper import execute_task
+from globus_compute_endpoint.engines.helper import _unpack_messagebody, execute_task
 from globus_compute_endpoint.exception_handling import (
     get_error_string,
     get_result_error_details,
 )
+from globus_compute_sdk.serialize import ComputeSerializer
 
 logger = logging.getLogger(__name__)
 _EXC_HISTORY_TMPL = "+" * 68 + "\nTraceback from attempt: {ndx}\n{exc}\n" + "-" * 68
@@ -94,6 +95,7 @@ class GlobusComputeEngineBase(ABC):
         self.results_passthrough: queue.Queue[dict[str, bytes | str | None]] = (
             queue.Queue()
         )
+        self.serializer = ComputeSerializer()
 
     @abstractmethod
     def start(
@@ -196,6 +198,7 @@ class GlobusComputeEngineBase(ABC):
     def _submit(
         self,
         func: t.Callable,
+        resource_specification: dict,
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Future:
@@ -219,7 +222,12 @@ class GlobusComputeEngineBase(ABC):
                 "packed_task": packed_task,
                 "exception_history": [],
             }
-        future = self._submit(execute_task, task_id, packed_task, self.endpoint_id)
+        _task, payload = _unpack_messagebody(packed_task)
+        unpacked_buffers = self.serializer.unpack_buffers(packed_buffer=payload)
+        resource_spec = self.serializer.deserialize(unpacked_buffers[-1])
+        future = self._submit(
+            execute_task, resource_spec, task_id, packed_task, self.endpoint_id
+        )
         self._setup_future_done_callback(task_id, future)
         return future
 
