@@ -24,7 +24,6 @@ def gc_engine_scaling(tmp_path):
             min_blocks=0,
             max_blocks=1,
         ),
-        strategy="simple",
         job_status_kwargs={"max_idletime": 0, "strategy_period": 0.1},
     )
     queue = Queue()
@@ -46,7 +45,7 @@ def gc_engine_non_scaling(tmp_path):
             min_blocks=1,
             max_blocks=1,
         ),
-        strategy=None,
+        strategy="none",
         job_status_kwargs={"max_idletime": 0, "strategy_period": 0.1},
     )
     queue = Queue()
@@ -86,7 +85,6 @@ def test_engine_no_scaling(gc_engine_non_scaling):
     engine = gc_engine_non_scaling
 
     assert engine.job_status_poller
-    assert engine._strategy is None
 
     # At the start there should be 0 managers
     outstanding = engine.get_outstanding_breakdown()
@@ -100,4 +98,4 @@ def test_engine_no_scaling(gc_engine_non_scaling):
 
     # Confirm that there's 1 manager
     outstanding = engine.get_outstanding_breakdown()
-    assert len(outstanding) == 2, "Expecting 1 manager+interchange"
+    assert len(outstanding) == 2, "Expecting 1 manager + interchange"

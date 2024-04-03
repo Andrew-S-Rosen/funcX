@@ -37,8 +37,7 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         container_uri: t.Optional[str] = None,
         container_cmd_options: t.Optional[str] = None,
         encrypted: bool = True,
-        max_idletime: int = 120,
-        strategy: t.Optional[str] = "simple",
+        strategy: str | None = None,
         job_status_kwargs: t.Optional[t.Dict] = None,
         **kwargs,
     ):
@@ -49,6 +48,8 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         arguments specific to the ``GlobusComputeEngine``.
 
         .. _parslhtex: https://parsl.readthedocs.io/en/stable/stubs/parsl.executors.HighThroughputExecutor.html
+        .. _parslstrategy: https://parsl.readthedocs.io/en/stable/stubs/parsl.jobs.strategy.Strategy.html
+        .. _parsljobstatuspoller: https://parsl.readthedocs.io/en/stable/stubs/parsl.jobs.job_status_poller.JobStatusPoller.html
 
         Parameters
         ----------
@@ -64,11 +65,14 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
            logic before enabling this functionality
            default: 0
 
-        strategy: Specify strategy to use from [None, 'simple']
+        strategy: str | None
+            Specify which scaling strategy to use; this is eventually given to
+            `Parsl's Strategy <parslstrategy_>`_.  [Deprecated; use
+            ``job_status_kwargs``]
 
-        job_status_kwargs: Kwarg options to be passed through to Parsl's
-           JobStatusPoller class that drives strategy to do auto-scaling.
-           Refer: parsl.readthedocs.io
+        job_status_kwargs: dict | None
+            Keyword arguments to be passed through to `Parsl's JobStatusPoller
+            <parsljobstatuspoller_>`_ class that drives strategy to do auto-scaling.
 
         encrypted: bool
             Flag to enable/disable encryption (CurveZMQ). Default is True.
@@ -88,7 +92,6 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         ), f"{self.container_type} is not a valid container_type"
         self.container_uri = container_uri
         self.container_cmd_options = container_cmd_options
-        self.max_idletime = max_idletime
 
         if executor is None:
             executor = HighThroughputExecutor(  # type: ignore
@@ -98,9 +101,15 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
                 **kwargs,
             )
         self.executor = executor
-        self._strategy = strategy
+        if strategy is None:
+            strategy = "simple"
+
         # Set defaults for JobStatusPoller
-        self._job_status_kwargs = {"max_idletime": 120.0, "strategy_period": 5.0}
+        self._job_status_kwargs = {
+            "max_idletime": 120.0,
+            "strategy": strategy,
+            "strategy_period": 5.0,
+        }
         self._job_status_kwargs.update(job_status_kwargs or {})
 
     @property
@@ -190,9 +199,7 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         self.executor.start()
         self._status_report_thread.start()
         # Add executor to poller *after* executor has started
-        self.job_status_poller = JobStatusPoller(
-            strategy=self._strategy, dfk=None, **self._job_status_kwargs
-        )
+        self.job_status_poller = JobStatusPoller(dfk=None, **self._job_status_kwargs)
         self.job_status_poller.add_executors([self.executor])
 
     def _submit(
@@ -401,10 +408,6 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
             global_state=executor_status,
             task_statuses=task_status_deltas,
         )
-
-    @property
-    def bad_state_is_set(self) -> bool:
-        return self.executor.bad_state_is_set
 
     @property
     def executor_exception(self) -> t.Optional[Exception]:
